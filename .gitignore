@@ -1,0 +1,28 @@
+# Java / Maven
+backend/target/
+# Node
+frontend/node_modules/
+frontend/dist/
+# Ambiente e segredos
+.env
+*.env.local
+# IDEs / SO
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Contexto e orquestração de agentes de IA (D-60): não faz parte do
+# entregável público. Continua existindo localmente e em qualquer clone
+# feito antes desta decisão; só passa a não ser rastreado a partir daqui.
+CLAUDE.md
+CONTEXT.md
+PRODUCT.md
+DESIGN.md
+COMECE-AQUI.md
+docs/
+.claude
+scripts/install-skills.ps1
+scripts/install-skills.sh
+scripts/skills.txt

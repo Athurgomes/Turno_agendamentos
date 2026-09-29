@@ -1,0 +1,24 @@
+# Perfil "local" (Docker Compose local / dev sem .env / testes). F1-2/F1-3:
+# defaults de datasource e segredo JWT para rodar sem exigir variaveis de
+# ambiente (o `application.yml` principal exige as duas em outros perfis).
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/reservas}
+    username: ${SPRING_DATASOURCE_USERNAME:reservas}
+    password: ${SPRING_DATASOURCE_PASSWORD:reservas}
+
+app:
+  jwt:
+    # D-48: valor de exemplo (ver ExampleSecrets.JWT_SECRET); SecretPolicyValidator
+    # recusa a subida com este valor fora do perfil local.
+    secret: ${APP_JWT_SECRET:dev-only-secret-nao-usar-em-producao-0123456789}
+  seed:
+    local:
+      # FD-1: seed minimo e ficticio (sindico, 2 unidades, 2 areas) na subida do
+      # perfil local, se o banco ainda nao tiver unidades (LocalSeedRunner).
+      # enabled=false nos testes de integracao (AbstractIntegrationTest), que
+      # tambem rodam com o perfil local mas nao querem dados fixos no contexto.
+      enabled: ${APP_LOCAL_SEED_ENABLED:true}
+      # Senha das contas ficticias do seed (sindico e unidades); valor de dev
+      # obvio, nunca usado fora do perfil local.
+      password: ${APP_LOCAL_SEED_PASSWORD:LocalDev123!}

@@ -1,0 +1,94 @@
+name: projeto-condominio
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: reservas
+      POSTGRES_USER: ${SPRING_DATASOURCE_USERNAME:-reservas}
+      POSTGRES_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-reservas}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432" # D-36: so para ferramentas de BD; todo bind so em 127.0.0.1 (D-35)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${SPRING_DATASOURCE_USERNAME:-reservas} -d reservas"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  s3:
+    image: versity/versitygw:v1.8.0
+    environment:
+      VGW_BACKEND: posix
+      VGW_BACKEND_ARG: /data
+      ROOT_ACCESS_KEY_ID: ${APP_STORAGE_ACCESS_KEY:-minioadmin}
+      ROOT_SECRET_ACCESS_KEY: ${APP_STORAGE_SECRET_KEY:-minioadmin}
+    volumes:
+      - s3data:/data
+    # D-46: sem porta publicada (so rede interna do compose); sem imagem de
+    # cliente admin (`mc`), quem cria o bucket e o proprio backend na subida.
+    healthcheck:
+      # A imagem nao tem curl nem um endpoint de health dedicado; um GET sem
+      # credenciais responde 403 (servidor de pe). wget sozinho falharia por
+      # causa do status HTTP, entao o grep no cabecalho e quem decide o resultado.
+      test: ["CMD-SHELL", "wget -S -O /dev/null http://localhost:7070 2>&1 | grep -q 'HTTP/'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+      TZ: ${TZ:-UTC}
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://postgres:5432/reservas}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME:-reservas}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD:-reservas}
+      APP_TIMEZONE: ${APP_TIMEZONE:-America/Sao_Paulo}
+      APP_PUBLIC_URL: ${APP_PUBLIC_URL:-http://localhost}
+      APP_JWT_SECRET: ${APP_JWT_SECRET:-dev-only-secret-nao-usar-em-producao-0123456789}
+      APP_COOKIE_SECURE: ${APP_COOKIE_SECURE:-false}
+      APP_STORAGE_ENDPOINT: http://s3:7070
+      APP_STORAGE_PUBLIC_URL: ${APP_STORAGE_PUBLIC_URL:-/storage}
+      APP_STORAGE_BUCKET: ${APP_STORAGE_BUCKET:-reservas}
+      APP_STORAGE_ACCESS_KEY: ${APP_STORAGE_ACCESS_KEY:-minioadmin}
+      APP_STORAGE_SECRET_KEY: ${APP_STORAGE_SECRET_KEY:-minioadmin}
+      APP_STORAGE_REGION: ${APP_STORAGE_REGION:-us-east-1}
+      APP_STORAGE_CREATE_BUCKET: ${APP_STORAGE_CREATE_BUCKET:-true}
+      APP_SEED_ADMIN_EMAIL: ${APP_SEED_ADMIN_EMAIL:-admin@exemplo.test}
+      APP_SEED_ADMIN_PASSWORD: ${APP_SEED_ADMIN_PASSWORD:-troque-esta-senha}
+      APP_CONDOMINIUM_NAME: ${APP_CONDOMINIUM_NAME:-Residencial Exemplo}
+      APP_DEFAULT_PAYMENT_WHATSAPP: ${APP_DEFAULT_PAYMENT_WHATSAPP:-}
+      APP_DEMO_NOW: ${APP_DEMO_NOW:-}
+      APP_DEMO_PASSWORD: ${APP_DEMO_PASSWORD:-}
+      APP_DEMO_TEMP_PASSWORD: ${APP_DEMO_TEMP_PASSWORD:-}
+      APP_DEMO_ADMIN_WHATSAPP: ${APP_DEMO_ADMIN_WHATSAPP:-}
+      APP_LOCAL_SEED_ENABLED: ${APP_LOCAL_SEED_ENABLED:-true}
+      APP_LOCAL_SEED_PASSWORD: ${APP_LOCAL_SEED_PASSWORD:-LocalDev123!}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      s3:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+    # Sem porta publicada: so alcancavel pelo proxy do frontend (rede interna).
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "127.0.0.1:80:80" # unica porta exposta ao host (D-35)
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  s3data:

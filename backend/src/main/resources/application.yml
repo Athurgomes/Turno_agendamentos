@@ -1,0 +1,93 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: reservas
+  datasource:
+    # Sem fallback aqui: em producao/demo essas variaveis sao obrigatorias
+    # (subir sem elas deve falhar alto e cedo). O perfil `local`
+    # (application-local.yml) tem defaults para rodar sem `.env`.
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+  servlet:
+    multipart:
+      # RN-17: 5 MB por foto; 30 MB de folga para ate 10 fotos (POST /areas, /areas/{id}/photos)
+      # numa unica requisicao multipart. Excesso vira 422 INVALID_FILE (GlobalExceptionHandler).
+      max-file-size: 5MB
+      max-request-size: 30MB
+  data:
+    web:
+      pageable:
+        # F2 (pendencia revisada na F3): teto para nao deixar `size` livre nas listagens paginadas.
+        max-page-size: 100
+
+springdoc:
+  api-docs:
+    path: /api/v3/api-docs
+  swagger-ui:
+    path: /api/swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+
+logging:
+  pattern:
+    # RNF-11: todo log de uma requisicao cita o mesmo X-Request-Id (CorrelationIdFilter).
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%X{requestId}] %-5level %logger{36} - %msg%n"
+
+app:
+  reservations:
+    # F5-2/RN-31: intervalo do job de expiração de pendentes (duração ISO-8601);
+    # sem variável de ambiente própria (valor fixo de regra de negócio, não de ambiente).
+    expiration-interval: PT15M
+  timezone: ${APP_TIMEZONE:America/Sao_Paulo}
+  # D-26: mesma origem em todos os ambientes; CORS so libera esta (defensivo).
+  public-url: ${APP_PUBLIC_URL:http://localhost}
+  jwt:
+    # RNF-02/D-42: sem fallback (falha a subida sem a variavel ou com < 32
+    # bytes, ver JwtProperties); o perfil `local` tem um default de dev.
+    secret: ${APP_JWT_SECRET}
+  cookie:
+    # RNF-02: `false` em dev local sem HTTPS; `true` em demo/prod.
+    secure: ${APP_COOKIE_SECURE:false}
+  seed:
+    # D-42: bootstrap do condominio/ADMIN inicial na subida (todos os perfis).
+    admin-email: ${APP_SEED_ADMIN_EMAIL:}
+    admin-password: ${APP_SEED_ADMIN_PASSWORD:}
+    condominium-name: ${APP_CONDOMINIUM_NAME:Residencial Exemplo}
+    default-payment-whatsapp: ${APP_DEFAULT_PAYMENT_WHATSAPP:}
+  demo:
+    # D-32/FD-3: relogio simulado, so aplicado no perfil `demo` (ClockConfig);
+    # vazio ou fora do perfil demo = relogio real (com aviso no log).
+    now: ${APP_DEMO_NOW:}
+  storage:
+    # D-27/D-41/D-46: Versity S3 Gateway local por padrao. endpoint = onde o
+    # backend fala com o S3 (rede interna do compose); public-url = prefixo
+    # que o navegador usa (nginx reencaminha /storage para o S3 interno).
+    # minioadmin/minioadmin sao credenciais convencionais de dev (nao um
+    # segredo real), aceitaveis so como default de dev local.
+    endpoint: ${APP_STORAGE_ENDPOINT:http://localhost:9000}
+    public-url: ${APP_STORAGE_PUBLIC_URL:/storage}
+    bucket: ${APP_STORAGE_BUCKET:reservas}
+    access-key: ${APP_STORAGE_ACCESS_KEY:minioadmin}
+    secret-key: ${APP_STORAGE_SECRET_KEY:minioadmin}
+    region: ${APP_STORAGE_REGION:us-east-1}
+    # D-46: cria o bucket na subida se ele nao existir (retry curto, nao derruba
+    # a aplicacao se o S3 ainda estiver subindo). false na publicacao gratuita,
+    # onde o bucket ja existe no painel do Supabase.
+    create-bucket: ${APP_STORAGE_CREATE_BUCKET:true}

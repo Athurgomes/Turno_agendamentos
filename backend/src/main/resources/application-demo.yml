@@ -1,0 +1,22 @@
+# Perfil "demo" (relogio simulado + seed ficticio, docs/08). O relogio
+# simulado (APP_DEMO_NOW, D-32) e a senha ADMIN de exemplo (D-48) sao
+# resolvidos em `application.yml`/ClockConfig/SecretPolicyValidator: nao ha
+# override aqui alem deste comentario.
+
+app:
+  seed:
+    demo:
+      # FD-2 (D-59): seed ficticio completo do cenario da apresentacao
+      # (docs/08 §2), executado por `DemoSeedRunner` na subida do perfil
+      # `demo` se ainda nao houver unidade. `enabled=false` nos testes de
+      # integracao que nao esperam esse cenario fixo (mesmo padrao do
+      # `app.seed.local.enabled`); o proprio teste do seed liga de volta.
+      enabled: ${APP_DEMO_SEED_ENABLED:true}
+      # Senha das contas ficticias de demonstracao (todas, exceto a-102).
+      password: ${APP_DEMO_PASSWORD:}
+      # RN-03: senha temporaria fixa da unidade a-102 (banner de primeiro
+      # acesso no roteiro); gerada pelo `demo-up`, nunca fixa no repositorio.
+      temp-password: ${APP_DEMO_TEMP_PASSWORD:}
+      # D-33: unica excecao a "so dado ficticio" — numero real de alguem da
+      # equipe, usado como WhatsApp de pagamento das areas pagas do seed.
+      admin-whatsapp: ${APP_DEMO_ADMIN_WHATSAPP:}
