@@ -40,6 +40,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
@@ -72,6 +73,15 @@ import org.springframework.test.web.servlet.MockMvc;
 @AutoConfigureMockMvc
 @Import(ReservationTestConfig.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+// D-39/RNF-03: sobrescreve o pool Hikari reduzido de AbstractIntegrationTest — este é o
+// único teste com 50 requisições HTTP reais concorrentes (RN-24) e precisa de conexões
+// suficientes para não estourar o HikariPool.connectionTimeout (30s) na fila. O
+// @DirtiesContext(AFTER_CLASS) acima garante que este pool maior não fica cacheado
+// para as classes seguintes da suíte.
+@TestPropertySource(properties = {
+    "spring.datasource.hikari.maximum-pool-size=20",
+    "spring.datasource.hikari.minimum-idle=5"
+})
 class ConcurrentReservationFlowTest extends AbstractIntegrationTest {
 
     private static final String PASSWORD = "SenhaForteConta1";

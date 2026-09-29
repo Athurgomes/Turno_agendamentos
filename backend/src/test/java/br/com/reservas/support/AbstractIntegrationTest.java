@@ -32,13 +32,29 @@ import org.testcontainers.utility.DockerImageName;
     // F5-2/RN-31: o job roda em background por conta própria; os testes de expiração
     // chamam ReservationService.expirePendingIfNeeded(...) direto com o Clock de teste,
     // então o job real (relógio do sistema) fica desligado para não interferir.
-    "app.reservations.expiration-job-enabled=false"
+    "app.reservations.expiration-job-enabled=false",
+    // D-39/RNF-03: a primeira execução real do CI (runner de 2 vCPUs) derrubou a
+    // suíte com "FATAL: sorry, too many clients already". Causa: 47 classes
+    // @SpringBootTest, cada combinação de perfis/propriedades cria um
+    // ApplicationContext cacheado com seu próprio pool HikariCP (default 10
+    // conexões cada), todos batendo neste único Postgres; num runner mais fraco a
+    // eviction de contexto é mais lenta e a soma passa do teto do Postgres.
+    // Limitar o pool aqui (a maioria dos testes usa 1 conexão por vez) resolve o
+    // lado da aplicação; o ConcurrentReservationFlowTest, que precisa de mais
+    // conexões simultâneas para as 50 requisições reais, sobrescreve este valor
+    // na própria classe.
+    "spring.datasource.hikari.maximum-pool-size=3",
+    "spring.datasource.hikari.minimum-idle=1"
 })
 public abstract class AbstractIntegrationTest {
 
     @ServiceConnection
     static final PostgreSQLContainer<?> POSTGRES =
-        new PostgreSQLContainer<>(DockerImageName.parse("postgres:16"));
+        new PostgreSQLContainer<>(DockerImageName.parse("postgres:16"))
+            // D-39/RNF-03: sobe o teto do Postgres de teste para acomodar com folga a
+            // soma dos pools Hikari de todos os ApplicationContexts cacheados pela
+            // suíte (ver comentário acima), mesmo num runner de CI mais lento.
+            .withCommand("postgres", "-c", "max_connections=300");
 
     static {
         POSTGRES.start();
