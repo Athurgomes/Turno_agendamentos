@@ -27,6 +27,9 @@
          para o MinIO local quanto para o Supabase Storage; nao vem no BOM do Spring
          Boot, por isso a versao e fixada aqui explicitamente. -->
     <aws-sdk-s3.version>2.28.11</aws-sdk-s3.version>
+    <!-- F8-2: exportacao XLSX (docs/04). Nao vem no BOM do Spring Boot, por isso a
+         versao e fixada aqui explicitamente. -->
+    <poi.version>5.3.0</poi.version>
   </properties>
 
   <dependencies>
@@ -84,6 +87,12 @@
       <groupId>software.amazon.awssdk</groupId>
       <artifactId>s3</artifactId>
       <version>${aws-sdk-s3.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.apache.poi</groupId>
+      <artifactId>poi-ooxml</artifactId>
+      <version>${poi.version}</version>
     </dependency>
 
     <dependency>

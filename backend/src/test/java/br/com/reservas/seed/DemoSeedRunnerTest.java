@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -296,5 +297,187 @@ class DemoSeedRunnerTest extends AbstractIntegrationTest {
             .anyMatch(event -> event.getLevel() == ch.qos.logback.classic.Level.WARN
                 && event.getFormattedMessage().contains("APP_DEMO_ADMIN_WHATSAPP vazio")
                 && event.getFormattedMessage().contains("docs/08 §5"));
+    }
+
+    @Test
+    @DisplayName("FD-2: seed demo e deterministico e idempotente no total de reservas historicas")
+    void historyIsDeterministicAndIdempotent() {
+        runner.run(null);
+        long total = countReservations();
+        assertThat(total).isGreaterThan(50); // ~6 meses de historico, alem das situacoes pre-montadas.
+
+        runner.run(null); // idempotente: segunda chamada nao roda de novo (ja existe unidade).
+        assertThat(countReservations()).isEqualTo(total);
+    }
+
+    @Test
+    @DisplayName("FD-2/D-43: seed demo preenche defaultPaymentWhatsapp e o GET/PUT de /admin/settings funciona (roteiro passo 11)")
+    void seedFillsDefaultPaymentWhatsappForSettingsScreen() throws Exception {
+        runner.run(null);
+
+        String adminToken = ApiLogin.token(mockMvc, objectMapper, adminEmail, ADMIN_PASSWORD);
+        String getResponse = mockMvc.perform(get("/api/v1/admin/settings")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.defaultPaymentWhatsapp").isNotEmpty())
+            .andReturn().getResponse().getContentAsString();
+
+        mockMvc.perform(put("/api/v1/admin/settings")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(getResponse))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.defaultPaymentWhatsapp").isNotEmpty());
+    }
+
+    @Test
+    @DisplayName("RF-DAS-02: GET /dashboard/summary do mes bate com contagem direta no banco")
+    void dashboardSummaryMatchesDirectSql() throws Exception {
+        runner.run(null);
+        String adminToken = ApiLogin.token(mockMvc, objectMapper, adminEmail, ADMIN_PASSWORD);
+
+        String response = mockMvc.perform(get("/api/v1/dashboard/summary")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        var json = objectMapper.readTree(response);
+        String from = json.path("from").asText();
+        String to = json.path("to").asText();
+
+        Long expectedTotal = jdbcTemplate.queryForObject(
+            "select count(*) from reservation where kind = 'BOOKING' "
+                + "and ((start_at at time zone 'America/Sao_Paulo')::date) between ?::date and ?::date",
+            Long.class, from, to);
+        Long expectedConfirmed = jdbcTemplate.queryForObject(
+            "select count(*) from reservation where kind = 'BOOKING' and status = 'CONFIRMED' "
+                + "and ((start_at at time zone 'America/Sao_Paulo')::date) between ?::date and ?::date",
+            Long.class, from, to);
+        Long expectedCancelledByResident = jdbcTemplate.queryForObject(
+            "select count(*) from reservation where kind = 'BOOKING' and status = 'CANCELLED' "
+                + "and cancelled_by = 'RESIDENT' "
+                + "and ((start_at at time zone 'America/Sao_Paulo')::date) between ?::date and ?::date",
+            Long.class, from, to);
+        java.math.BigDecimal expectedConfirmedAmount = jdbcTemplate.queryForObject(
+            "select coalesce(sum(price_snapshot), 0) from reservation where kind = 'BOOKING' "
+                + "and status = 'CONFIRMED' and requires_payment_snapshot "
+                + "and ((start_at at time zone 'America/Sao_Paulo')::date) between ?::date and ?::date",
+            java.math.BigDecimal.class, from, to);
+
+        assertThat(json.path("reservations").path("total").asLong()).isEqualTo(expectedTotal);
+        assertThat(json.path("reservations").path("confirmed").asLong()).isEqualTo(expectedConfirmed);
+        assertThat(json.path("cancellations").path("byResident").asLong()).isEqualTo(expectedCancelledByResident);
+        assertThat(json.path("amounts").path("confirmed").asDouble())
+            .isEqualTo(expectedConfirmedAmount.setScale(2, java.math.RoundingMode.HALF_UP).doubleValue());
+        assertThat(expectedConfirmedAmount).isGreaterThan(java.math.BigDecimal.ZERO);
+    }
+
+    @Test
+    @DisplayName("RF-DAS-02: GET /dashboard/reservations-by-month bate com contagem direta no banco (12 meses)")
+    void reservationsByMonthMatchesDirectSql() throws Exception {
+        runner.run(null);
+        String adminToken = ApiLogin.token(mockMvc, objectMapper, adminEmail, ADMIN_PASSWORD);
+
+        String response = mockMvc.perform(get("/api/v1/dashboard/reservations-by-month")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        var months = objectMapper.readTree(response);
+        assertThat(months).hasSize(12);
+
+        for (var month : months) {
+            String key = month.path("month").asText();
+            Long expectedTotal = jdbcTemplate.queryForObject(
+                "select count(*) from reservation where kind = 'BOOKING' "
+                    + "and to_char((start_at at time zone 'America/Sao_Paulo'), 'YYYY-MM') = ?",
+                Long.class, key);
+            assertThat(month.path("total").asLong()).as("total do mes " + key).isEqualTo(expectedTotal);
+        }
+    }
+
+    @Test
+    @DisplayName("D-62: mapa de calor do historico tem mais demanda em sex/sab/dom que em seg-qui")
+    void heatmapHasMoreWeekendDemand() throws Exception {
+        runner.run(null);
+        String adminToken = ApiLogin.token(mockMvc, objectMapper, adminEmail, ADMIN_PASSWORD);
+
+        String response = mockMvc.perform(get("/api/v1/dashboard/demand-heatmap")
+                .param("from", "2026-05-10").param("to", "2026-11-09")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        var cells = objectMapper.readTree(response);
+
+        long weekendCount = 0;
+        long weekdayCount = 0;
+        for (var cell : cells) {
+            int dayOfWeek = cell.path("dayOfWeek").asInt(); // ISO: 1=segunda ... 7=domingo
+            long count = cell.path("count").asLong();
+            if (dayOfWeek == 5 || dayOfWeek == 6 || dayOfWeek == 7) {
+                weekendCount += count;
+            } else {
+                weekdayCount += count;
+            }
+        }
+        assertThat(weekendCount).isGreaterThan(weekdayCount);
+    }
+
+    @Test
+    @DisplayName("FD-2/RF-DAS-02: heatmap de 6 meses nao acende uma hora fixa (ex.: 08h) em todos os 7 dias")
+    void heatmapHasNoSingleHourArtifactAcrossAllWeekdays() throws Exception {
+        runner.run(null);
+        String adminToken = ApiLogin.token(mockMvc, objectMapper, adminEmail, ADMIN_PASSWORD);
+
+        String response = mockMvc.perform(get("/api/v1/dashboard/demand-heatmap")
+                .param("from", "2026-05-10").param("to", "2026-11-09")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        var cells = objectMapper.readTree(response);
+
+        Map<Integer, java.util.Set<Integer>> daysByHourWithHighCount = new java.util.HashMap<>();
+        for (var cell : cells) {
+            int hour = cell.path("hour").asInt();
+            int dayOfWeek = cell.path("dayOfWeek").asInt();
+            long count = cell.path("count").asLong();
+            if (count >= 5) {
+                daysByHourWithHighCount.computeIfAbsent(hour, key -> new java.util.HashSet<>()).add(dayOfWeek);
+            }
+        }
+        daysByHourWithHighCount.forEach((hour, days) -> assertThat(days)
+            .as("hora %d nao deveria acender count>=5 em todos os 7 dias da semana", hour)
+            .hasSizeLessThan(7));
+    }
+
+    @Test
+    @DisplayName("FD-2/RF-DAS-02: GET /dashboard/top-units devolve 10 unidades com contagens nao todas iguais")
+    void topUnitsHasTenUnitsNotAllTied() throws Exception {
+        runner.run(null);
+        String adminToken = ApiLogin.token(mockMvc, objectMapper, adminEmail, ADMIN_PASSWORD);
+
+        String response = mockMvc.perform(get("/api/v1/dashboard/top-units")
+                .param("from", "2026-05-10").param("to", "2026-11-09")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andReturn().getResponse().getContentAsString();
+        var units = objectMapper.readTree(response);
+
+        assertThat(units).hasSize(10);
+        java.util.Set<Long> counts = new java.util.HashSet<>();
+        units.forEach(u -> counts.add(u.path("reservations").asLong()));
+        assertThat(counts).as("contagens nao devem ser todas iguais (ranking escalonado)").hasSizeGreaterThan(1);
+    }
+
+    @Test
+    @DisplayName("RF-SIN-01: GET /dashboard/home traz reserva hoje, proximos 7 dias, report aberto e vistoria atrasada")
+    void dashboardHomeHasRichScenario() throws Exception {
+        runner.run(null);
+        String adminToken = ApiLogin.token(mockMvc, objectMapper, adminEmail, ADMIN_PASSWORD);
+
+        mockMvc.perform(get("/api/v1/dashboard/home").header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.today").isNotEmpty())
+            .andExpect(jsonPath("$.next7Days").isNotEmpty())
+            .andExpect(jsonPath("$.openReports.count", org.hamcrest.Matchers.greaterThanOrEqualTo(1)))
+            .andExpect(jsonPath("$.overdueInspections").isNotEmpty());
     }
 }

@@ -12,6 +12,8 @@ import jakarta.persistence.EntityNotFoundException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -51,6 +53,23 @@ public class AreaPhotoService {
     @Transactional(readOnly = true)
     public java.util.Optional<AreaPhoto> findCover(UUID areaId) {
         return photos.findFirstByAreaIdAndFeaturedTrueAndArchivedFalseOrderByTakenAtDescCreatedAtDesc(areaId);
+    }
+
+    /**
+     * F9-1/RNF-04: capa de varias areas de uma vez (catalogo `GET /areas`),
+     * numa unica consulta em vez de {@link #findCover(UUID)} por area (N+1).
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, AreaPhoto> findCovers(Collection<UUID> areaIds) {
+        if (areaIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, AreaPhoto> covers = new LinkedHashMap<>();
+        for (AreaPhoto photo : photos
+            .findByAreaIdInAndFeaturedTrueAndArchivedFalseOrderByAreaIdAscTakenAtDescCreatedAtDesc(areaIds)) {
+            covers.putIfAbsent(photo.getAreaId(), photo);
+        }
+        return covers;
     }
 
     /** `GET /areas/{id}/photos` (S/A): historico completo, filtrado por `takenAt`. */

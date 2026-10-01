@@ -145,12 +145,39 @@ describe("ReservationWizardPage (RF-RES-02/03, RNF-05)", () => {
     const user = userEvent.setup();
     renderWizard();
 
-    await user.click(screen.getByRole("button", { name: "16" }));
+    const notBookableDay = screen.getByRole("button", {
+      name: "16, não disponível: Reservas para amanhã só podem ser feitas entre 06:00 e 16:00.",
+    });
+    await user.click(notBookableDay);
 
     expect(
       screen.getByText("Reservas para amanhã só podem ser feitas entre 06:00 e 16:00."),
     ).toBeInTheDocument();
     // Não avança para o passo de horário (dia não ficou selecionado).
+    expect(screen.getByText("Passo 1 de 4")).toBeInTheDocument();
+  });
+
+  it("dia não reservável continua focável e ativável por teclado (RNF-06, D-49)", async () => {
+    useAreaAvailabilityQuery.mockReturnValue({
+      data: [day("2026-09-16", { bookable: false, notBookableReason: "NEXT_DAY_WINDOW_CLOSED" })],
+      isLoading: false,
+    });
+    const user = userEvent.setup();
+    renderWizard();
+
+    const notBookableDay = screen.getByRole("button", {
+      name: "16, não disponível: Reservas para amanhã só podem ser feitas entre 06:00 e 16:00.",
+    });
+    expect(notBookableDay).not.toHaveAttribute("aria-disabled", "true");
+
+    notBookableDay.focus();
+    expect(notBookableDay).toHaveFocus();
+    await user.keyboard("{Enter}");
+
+    expect(
+      screen.getByText("Reservas para amanhã só podem ser feitas entre 06:00 e 16:00."),
+    ).toBeInTheDocument();
+    // Ativar o dia só mostra o motivo, não avança o passo.
     expect(screen.getByText("Passo 1 de 4")).toBeInTheDocument();
   });
 

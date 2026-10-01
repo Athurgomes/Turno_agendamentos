@@ -11,6 +11,7 @@ import { TempPasswordBanner } from "../../features/auth/TempPasswordBanner";
 import { useConfirmationsNavInfo } from "../../features/admin/payments/hooks";
 import { useReportsNavInfo } from "../../features/reports/hooks";
 import { AccountMenu } from "./AccountMenu";
+import { BrandMark } from "./BrandMark";
 import { navItemsForRole, type NavItem } from "./navItems";
 
 const CONFIRMATIONS_PATH = "/admin/confirmacoes";
@@ -94,8 +95,9 @@ export function AppShell() {
 
       {/* Barra lateral — desktop (>= 1024px) */}
       <aside className="hidden w-64 shrink-0 flex-col border-r border-neutral-200 bg-neutral-100 lg:flex">
-        <div className="p-4">
-          <p className="text-lg font-semibold text-neutral-900">Reservas</p>
+        <div className="flex items-center gap-2 p-4">
+          <BrandMark className="h-8 w-8" />
+          <p className="text-lg font-semibold text-neutral-900">Turno</p>
         </div>
         <nav aria-label="Navegação principal" className="flex-1">
           <MenuLinks items={items} onNavigate={() => {}} />
@@ -106,8 +108,9 @@ export function AppShell() {
       <div className="flex min-h-screen flex-1 flex-col">
         {/* Barra superior — mobile/tablet, menu compacto */}
         <header className="flex items-center justify-between border-b border-neutral-200 bg-neutral-0 p-4 lg:hidden">
-          <span className="text-lg font-semibold text-neutral-900">
-            Reservas
+          <span className="flex items-center gap-2 text-lg font-semibold text-neutral-900">
+            <BrandMark className="h-7 w-7" />
+            Turno
           </span>
           <button
             type="button"

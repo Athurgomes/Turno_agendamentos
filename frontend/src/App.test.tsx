@@ -10,10 +10,11 @@ describe("App", () => {
   it("sem sessão restaurada, manda o visitante para /login", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("sem rede"));
 
-    render(<App />);
+    const { container } = render(<App />);
 
     expect(
-      await screen.findByRole("heading", { name: /entrar no sistema/i }),
+      await screen.findByRole("heading", { name: /turno/i }),
     ).toBeInTheDocument();
+    expect(container.querySelector("svg")).toBeInTheDocument();
   });
 });

@@ -122,6 +122,18 @@ public class UnitService {
         return residents.findById(residentId);
     }
 
+    /**
+     * F6 (`report`): mesma consulta de {@link #findResidentById(UUID)}, mas em
+     * lote (evita N+1 em listagens, ex. {@code ReportService#toAdminViews}).
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, Resident> findResidentsByIds(Collection<UUID> residentIds) {
+        if (residentIds.isEmpty()) {
+            return Map.of();
+        }
+        return residents.findByIdIn(residentIds).stream().collect(Collectors.toMap(Resident::getId, r -> r));
+    }
+
     @Transactional(readOnly = true)
     public Page<Unit> search(UUID condominiumId, String search, String block, Pageable pageable) {
         return units.search(condominiumId, blankToNull(search), blankToNull(block), pageable);

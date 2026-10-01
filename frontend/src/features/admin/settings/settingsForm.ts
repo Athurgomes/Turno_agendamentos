@@ -15,10 +15,17 @@ function nonNegativeInt(message: string) {
 export const settingsFormSchema = z
   .object({
     condominiumName: z.string().trim().min(1, "Informe o nome do condomínio."),
+    // Opcional no backend (sem @NotBlank) — a API devolve `null` quando
+    // APP_DEFAULT_PAYMENT_WHATSAPP não foi definida no bootstrap (Bug 4,
+    // docs/12). Campo vazio é válido; só valida o formato quando preenchido.
     defaultPaymentWhatsapp: z
       .string()
-      .trim()
-      .regex(/^\d{12,13}$/, "Telefone deve ter só dígitos, com DDI (ex.: 5562999998888)."),
+      .nullable()
+      .transform((value) => value?.trim() ?? "")
+      .refine(
+        (value) => value === "" || /^\d{12,13}$/.test(value),
+        "Telefone deve ter só dígitos, com DDI (ex.: 5562999998888).",
+      ),
     minAdvanceDays: nonNegativeInt("Use um número inteiro, 0 ou mais."),
     nextDayWindowStart: z.string().trim().regex(TIME_REGEX, "Use o formato HH:mm."),
     nextDayWindowEnd: z.string().trim().regex(TIME_REGEX, "Use o formato HH:mm."),
@@ -77,6 +84,8 @@ export function settingsToFormValues(settings: SettingsDto): SettingsFormInput {
 export function buildSettingsPayload(values: SettingsFormValues, current: SettingsDto): SettingsDto {
   return {
     ...values,
+    // Campo vazio vira `null` (contrato aceita, `UpdateSettingsRequest` não tem @NotBlank) em vez de "".
+    defaultPaymentWhatsapp: values.defaultPaymentWhatsapp === "" ? null : values.defaultPaymentWhatsapp,
     timezone: current.timezone,
     slotMinutes: current.slotMinutes,
   };

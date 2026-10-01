@@ -16,6 +16,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -59,8 +60,11 @@ public class AreaController {
     public List<AreaSummaryDto> catalog(@RequestParam(required = false) AreaCategory category,
         @RequestParam(required = false) AreaStatus status) {
         UUID condominiumId = currentUserProvider.current().condominiumId();
-        return areaService.catalog(condominiumId, category, status).stream()
-            .map(area -> assembler.toSummary(area, photoService.findCover(area.getId())))
+        List<Area> areasFound = areaService.catalog(condominiumId, category, status);
+        // RNF-04: uma unica consulta para a capa de todas as areas (evita N+1).
+        var covers = photoService.findCovers(areasFound.stream().map(Area::getId).toList());
+        return areasFound.stream()
+            .map(area -> assembler.toSummary(area, Optional.ofNullable(covers.get(area.getId()))))
             .toList();
     }
 

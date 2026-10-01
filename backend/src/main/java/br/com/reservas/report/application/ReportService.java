@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -216,6 +217,13 @@ public class ReportService {
         return reports.countByStatusIn(OPEN_STATUSES);
     }
 
+    /** `GET /dashboard/home` (F7-1, RF-SIN-01): os `limit` reports abertos mais antigos. */
+    @Transactional(readOnly = true)
+    public List<AdminReportView> oldestOpen(int limit) {
+        List<Report> found = reports.findByStatusInOrderByCreatedAtAsc(OPEN_STATUSES, PageRequest.of(0, limit));
+        return toAdminViews(found);
+    }
+
     private void savePhoto(UUID reportId, UUID actorId, UploadedPhoto file, ReportPhotoStage stage, Instant now) {
         ImageFileValidator.Validated validated = ImageFileValidator.validate(file.content());
         // RN-17: chave nunca reutilizada, nunca baseada em nome enviado pelo cliente.
@@ -289,16 +297,15 @@ public class ReportService {
         List<ReportView> baseViews = toViews(found, true);
         Map<UUID, String> unitIdentifiers = unitService.identifiersByIds(
             found.stream().map(Report::getUnitId).distinct().toList());
-        // HashMap simples: telefone pode ser null (morador removido) e Collectors.toMap rejeita valor null.
-        Map<UUID, String> phoneByResident = new java.util.HashMap<>();
-        found.stream().map(Report::getResidentId).distinct()
-            .forEach(residentId -> phoneByResident.put(residentId,
-                unitService.findResidentById(residentId).map(Resident::getPhone).orElse(null)));
+        // Evita N+1 (revisão F7): busca todos os moradores da página de uma vez.
+        Map<UUID, Resident> residentsById = unitService.findResidentsByIds(
+            found.stream().map(Report::getResidentId).distinct().toList());
 
         List<AdminReportView> views = new ArrayList<>(found.size());
         for (int i = 0; i < found.size(); i++) {
             Report r = found.get(i);
-            String phone = phoneByResident.get(r.getResidentId());
+            Resident resident = residentsById.get(r.getResidentId());
+            String phone = resident == null ? null : resident.getPhone();
             String whatsappContactUrl = phone == null ? null : "https://wa.me/" + phone;
             views.add(new AdminReportView(baseViews.get(i), r.getUnitId(), unitIdentifiers.get(r.getUnitId()), phone,
                 whatsappContactUrl, r.getMaintenanceCost()));

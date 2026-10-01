@@ -88,6 +88,31 @@ describe("SettingsPage", () => {
     expect(await screen.findByText("Configurações salvas.")).toBeInTheDocument();
   });
 
+  it("carrega com defaultPaymentWhatsapp nulo e salva com sucesso (Bug 4, docs/12)", async () => {
+    useSettingsQuery.mockReturnValue({
+      data: { ...baseSettings, defaultPaymentWhatsapp: null },
+      isLoading: false,
+    });
+    updateMutateAsync.mockResolvedValue({ ...baseSettings, defaultPaymentWhatsapp: null });
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+
+    expect(
+      screen.queryByText("Invalid input: expected string, received null"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("WhatsApp da administração")).toHaveValue("");
+
+    await user.click(screen.getByRole("button", { name: "Salvar configurações" }));
+
+    await waitFor(() =>
+      expect(updateMutateAsync).toHaveBeenCalledWith({
+        ...baseSettings,
+        defaultPaymentWhatsapp: null,
+      }),
+    );
+    expect(await screen.findByText("Configurações salvas.")).toBeInTheDocument();
+  });
+
   it("mostra o erro do backend sem quebrar o formulário", async () => {
     updateMutateAsync.mockRejectedValue(
       new ApiError({

@@ -21,7 +21,7 @@ export function TempPasswordBanner() {
       </p>
       <Link
         to="/alterar-senha"
-        className="inline-flex shrink-0 items-center justify-center rounded-md border border-warning-800 px-3 py-1.5 text-sm font-medium text-warning-800 hover:bg-warning-100"
+        className="inline-flex shrink-0 items-center justify-center rounded-md border border-warning-800 px-3 py-1.5 text-sm font-medium text-warning-800 hover:bg-neutral-100"
       >
         Trocar senha
       </Link>
