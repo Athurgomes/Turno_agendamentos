@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { settingsFormSchema, settingsToFormValues } from "./settingsForm";
+import { buildSettingsPayload, settingsFormSchema, settingsToFormValues } from "./settingsForm";
 import type { SettingsDto } from "../../../shared/api/types";
 
 /**
@@ -33,5 +33,41 @@ describe("settingsToFormValues", () => {
     const values = settingsToFormValues(realApiSettings);
     const result = settingsFormSchema.safeParse(values);
     expect(result.success).toBe(true);
+  });
+});
+
+/** Bug 4 (docs/12): `defaultPaymentWhatsapp` vem `null` quando APP_DEFAULT_PAYMENT_WHATSAPP não foi definida. */
+describe("defaultPaymentWhatsapp nulo (Bug 4, docs/12-ensaio-roteiro.md)", () => {
+  const settingsWithNullWhatsapp: SettingsDto = { ...realApiSettings, defaultPaymentWhatsapp: null };
+
+  it("settingsToFormValues repassa null sem quebrar", () => {
+    const values = settingsToFormValues(settingsWithNullWhatsapp);
+    expect(values.defaultPaymentWhatsapp).toBeNull();
+  });
+
+  it("o schema aceita null e valida com sucesso (campo fica vazio)", () => {
+    const values = settingsToFormValues(settingsWithNullWhatsapp);
+    const result = settingsFormSchema.safeParse(values);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.defaultPaymentWhatsapp).toBe("");
+    }
+  });
+
+  it("buildSettingsPayload envia null (não string vazia) quando o campo fica em branco", () => {
+    const parsed = settingsFormSchema.parse(settingsToFormValues(settingsWithNullWhatsapp));
+    const payload = buildSettingsPayload(parsed, settingsWithNullWhatsapp);
+
+    expect(payload.defaultPaymentWhatsapp).toBeNull();
+  });
+
+  it("continua rejeitando telefone inválido quando preenchido", () => {
+    const result = settingsFormSchema.safeParse({
+      ...settingsToFormValues(realApiSettings),
+      defaultPaymentWhatsapp: "123",
+    });
+
+    expect(result.success).toBe(false);
   });
 });

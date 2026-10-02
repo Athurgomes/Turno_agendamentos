@@ -253,6 +253,30 @@ public class ReservationService {
     }
 
     /**
+     * `GET /dashboard/home` (F7-1, RF-SIN-01): reservas e bloqueios ativos
+     * (`PENDING_PAYMENT`/`CONFIRMED`) com início em {@code [from, toExclusive)},
+     * por início crescente. Expira pendentes vencidas (RN-31) antes de montar a
+     * lista, como toda leitura deste serviço.
+     */
+    @Transactional
+    public List<br.com.reservas.shared.reservation.ReservationSummary> activeSummariesBetween(LocalDate from,
+        LocalDate toExclusive) {
+        Context ctx = currentContext();
+        expirePendingIfNeeded(ctx.now());
+        ZoneId zone = ctx.zone();
+        Instant fromInstant = from.atStartOfDay(zone).toInstant();
+        Instant toInstant = toExclusive.atStartOfDay(zone).toInstant();
+        List<Reservation> found = reservations
+            .findByStatusInAndStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(ACTIVE_STATUSES,
+                fromInstant, toInstant);
+        Map<UUID, AreaBookingInfo> areasById = areaQueryService.findBookableByIds(
+            found.stream().map(Reservation::getAreaId).distinct().toList());
+        Map<UUID, String> unitIdentifiersById = unitService.identifiersByIds(
+            found.stream().map(Reservation::getUnitId).filter(Objects::nonNull).distinct().toList());
+        return found.stream().map(r -> toSummary(r, zone, areasById, unitIdentifiersById)).toList();
+    }
+
+    /**
      * F6 (`report`): resumo em lote de reservas por id (mesmo tipo usado em
      * `affectedReservations`, `shared.reservation`), para o módulo `report`
      * montar listagens sem N+1 nem acessar o repositório deste módulo

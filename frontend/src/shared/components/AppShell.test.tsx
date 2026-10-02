@@ -45,6 +45,22 @@ function renderShell(role: Role) {
   );
 }
 
+describe("AppShell — menu do síndico (F7-2, RF-SIN-01 a 05)", () => {
+  beforeEach(() => {
+    useConfirmationsNavInfo.mockReturnValue({ visible: false, count: 0 });
+    useReportsNavInfo.mockReturnValue({ count: 0 });
+  });
+
+  it("leva a Início, Agenda, Áreas e Reports em um clique (Bloqueios via Agenda, RF-SIN-05)", () => {
+    renderShell("SYNDIC");
+
+    expect(screen.getAllByRole("link", { name: "Início" })[0]).toHaveAttribute("href", "/painel");
+    expect(screen.getAllByRole("link", { name: "Agenda" })[0]).toHaveAttribute("href", "/agenda");
+    expect(screen.getAllByRole("link", { name: "Áreas" })[0]).toHaveAttribute("href", "/areas");
+    expect(screen.getAllByRole("link", { name: "Reports" })[0]).toHaveAttribute("href", "/reports");
+  });
+});
+
 describe("AppShell — item de menu Confirmações (RF-PAG-01)", () => {
   beforeEach(() => {
     useReportsNavInfo.mockReturnValue({ count: 0 });

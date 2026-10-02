@@ -35,23 +35,43 @@ class SeedHistoryWriter {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    /** Reserva histórica (`kind = BOOKING`) já com o status final desejado; devolve o id gerado. */
+    /** Reserva histórica (`kind = BOOKING`) já `CONFIRMED`; devolve o id gerado. */
     UUID insertConfirmedReservation(UUID condominiumId, UUID areaId, UUID unitId, UUID residentId,
         String residentName, String residentPhone, Instant startAt, Instant endAt, int guests,
         boolean requiresPayment, BigDecimal price, UUID createdBy, Instant createdAt) {
+        return insertReservation(condominiumId, areaId, unitId, residentId, residentName, residentPhone, startAt,
+            endAt, guests, requiresPayment, price, "CONFIRMED", null, null, requiresPayment ? createdAt : null,
+            createdBy, createdAt, null);
+    }
+
+    /**
+     * Reserva histórica (`kind = BOOKING`) já com o status final desejado (FD-2 completo: mistura de
+     * `CONFIRMED`/`CANCELLED` do histórico de ~6 meses); devolve o id gerado. {@code cancelledBy}/
+     * {@code cancelledAt} nulos para `CONFIRMED`; {@code paymentConfirmedAt} só para `CONFIRMED` em
+     * área paga.
+     */
+    UUID insertReservation(UUID condominiumId, UUID areaId, UUID unitId, UUID residentId, String residentName,
+        String residentPhone, Instant startAt, Instant endAt, int guests, boolean requiresPayment, BigDecimal price,
+        String status, String cancelledBy, String statusReason, Instant paymentConfirmedAt, UUID createdBy,
+        Instant createdAt, Instant cancelledAt) {
         UUID id = UUID.randomUUID();
         long sequence = nextReservationSequence();
         String code = "RES-%d-%06d".formatted(yearOf(startAt), sequence);
+        Instant updatedAt = cancelledAt != null ? cancelledAt : createdAt;
         jdbcTemplate.update("""
             insert into reservation (id, code, condominium_id, area_id, kind, unit_id, resident_id,
-                resident_name_snapshot, resident_phone_snapshot, start_at, end_at, guests, status,
+                resident_name_snapshot, resident_phone_snapshot, start_at, end_at, guests, status, status_reason,
                 requires_payment_snapshot, price_snapshot, payment_confirmed_at, payment_confirmed_by,
-                created_by, created_at, updated_at)
-            values (?, ?, ?, ?, 'BOOKING', ?, ?, ?, ?, ?, ?, ?, 'CONFIRMED', ?, ?, ?, ?, ?, ?, ?)
+                cancelled_by, cancelled_at, created_by, created_at, updated_at)
+            values (?, ?, ?, ?, 'BOOKING', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, id, code, condominiumId, areaId, unitId, residentId, residentName, residentPhone, ts(startAt),
-            ts(endAt), guests, requiresPayment, price, requiresPayment ? ts(createdAt) : null,
-            requiresPayment ? createdBy : null, createdBy, ts(createdAt), ts(createdAt));
+            ts(endAt), guests, status, statusReason, requiresPayment, price, ts(paymentConfirmedAt),
+            paymentConfirmedAt != null ? createdBy : null, cancelledBy, ts(cancelledAt), createdBy, ts(createdAt),
+            ts(updatedAt));
         insertReservationEvent(id, "CREATED", createdBy, createdAt);
+        if (cancelledBy != null) {
+            insertReservationEvent(id, "CANCELLED", createdBy, cancelledAt);
+        }
         return id;
     }
 
@@ -61,20 +81,23 @@ class SeedHistoryWriter {
             UUID.randomUUID(), reservationId, type, actorId, ts(occurredAt));
     }
 
-    /** Report histórico; devolve o id gerado. {@code resolvedAt}/{@code maintenanceCost} nulos se ainda aberto. */
+    /**
+     * Report histórico; devolve o id gerado. {@code resolvedAt}/{@code maintenanceCost} nulos se ainda
+     * aberto ou descartado; {@code statusReason} obrigatório para `DISMISSED` (RN-36).
+     */
     UUID insertReport(UUID condominiumId, UUID reservationId, UUID areaId, UUID unitId, UUID residentId,
-        String residentName, String category, String description, String status, BigDecimal maintenanceCost,
-        Instant resolvedAt, Instant createdAt) {
+        String residentName, String category, String description, String status, String statusReason,
+        BigDecimal maintenanceCost, Instant resolvedAt, Instant createdAt) {
         UUID id = UUID.randomUUID();
         long sequence = nextReportSequence();
         String code = "OCR-%d-%06d".formatted(yearOf(createdAt), sequence);
         jdbcTemplate.update("""
             insert into report (id, code, condominium_id, reservation_id, area_id, unit_id, resident_id,
-                resident_name_snapshot, category, description, status, maintenance_cost, resolved_at,
+                resident_name_snapshot, category, description, status, status_reason, maintenance_cost, resolved_at,
                 created_at, updated_at)
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, id, code, condominiumId, reservationId, areaId, unitId, residentId, residentName, category,
-            description, status, maintenanceCost, ts(resolvedAt), ts(createdAt),
+            description, status, statusReason, maintenanceCost, ts(resolvedAt), ts(createdAt),
             ts(resolvedAt != null ? resolvedAt : createdAt));
         return id;
     }

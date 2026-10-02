@@ -102,31 +102,35 @@ async function toApiError(response: Response): Promise<ApiError> {
 }
 
 /**
- * Faz uma requisição a `/api/v1${path}`. Em 401 tenta um refresh (uma vez, com
- * fila única para concorrência) e repete a requisição original; se o refresh
- * falhar, limpa a sessão e manda para `/login`.
+ * Faz a requisição a `/api/v1${path}` e, em 401, tenta um refresh (uma vez,
+ * com fila única para concorrência) e repete a requisição original; se o
+ * refresh falhar, limpa a sessão e manda para `/login`. Usado por `apiFetch`
+ * e `apiFetchBlob`, que só diferem em como leem o corpo da resposta.
  */
-export async function apiFetch<T = void>(
+async function fetchWithRefresh(
   path: string,
-  options: ApiFetchOptions = {},
-): Promise<T> {
+  options: ApiFetchOptions,
+): Promise<Response> {
   const response = await fetch(`${API_BASE}${path}`, buildRequestInit(options));
 
   if (response.status === 401 && !path.startsWith("/auth/")) {
     const refreshed = await refreshSession();
     if (refreshed) {
-      const retryResponse = await fetch(
-        `${API_BASE}${path}`,
-        buildRequestInit(options),
-      );
-      if (!retryResponse.ok) throw await toApiError(retryResponse);
-      return parseBody<T>(retryResponse);
+      return fetch(`${API_BASE}${path}`, buildRequestInit(options));
     }
     clearSession();
     redirectToLogin();
     throw await toApiError(response);
   }
 
+  return response;
+}
+
+export async function apiFetch<T = void>(
+  path: string,
+  options: ApiFetchOptions = {},
+): Promise<T> {
+  const response = await fetchWithRefresh(path, options);
   if (!response.ok) throw await toApiError(response);
   return parseBody<T>(response);
 }
@@ -135,4 +139,29 @@ async function parseBody<T>(response: Response): Promise<T> {
   if (response.status === 204) return undefined as T;
   const text = await response.text();
   return (text ? JSON.parse(text) : undefined) as T;
+}
+
+/** Nome de arquivo entre aspas de `Content-Disposition: attachment; filename="..."`. */
+function filenameFromContentDisposition(value: string | null, fallback: string): string {
+  const match = value ? /filename="?([^";]+)"?/.exec(value) : null;
+  return match ? match[1] : fallback;
+}
+
+/**
+ * Baixa um arquivo (exportação CSV/XLSX) anexando o token da sessão — nunca
+ * `<a href>` direto para `/api/...`, porque o token vive só em memória
+ * (CLAUDE.md §7). Devolve o blob e o nome de arquivo sugerido pelo servidor.
+ */
+export async function apiFetchBlob(
+  path: string,
+  fallbackFilename: string,
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await fetchWithRefresh(path, {});
+  if (!response.ok) throw await toApiError(response);
+  const blob = await response.blob();
+  const filename = filenameFromContentDisposition(
+    response.headers.get("Content-Disposition"),
+    fallbackFilename,
+  );
+  return { blob, filename };
 }

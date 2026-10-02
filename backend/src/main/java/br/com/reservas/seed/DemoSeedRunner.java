@@ -17,7 +17,9 @@ import br.com.reservas.reservation.application.ReservationCreationResult;
 import br.com.reservas.reservation.application.ReservationService;
 import br.com.reservas.settings.application.CondominiumSettingsService;
 import br.com.reservas.settings.application.RuleSettingsSnapshot;
+import br.com.reservas.settings.application.SettingsSnapshot;
 import br.com.reservas.settings.application.SyndicService;
+import br.com.reservas.settings.application.UpdateSettingsCommand;
 import br.com.reservas.shared.condominium.CondominiumLookup;
 import br.com.reservas.unit.application.CreateUnitResult;
 import br.com.reservas.unit.application.ResidentInput;
@@ -26,12 +28,18 @@ import br.com.reservas.unit.domain.Resident;
 import java.awt.Color;
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
 import java.util.UUID;
 import java.util.stream.IntStream;
 import org.slf4j.Logger;
@@ -84,6 +92,19 @@ public class DemoSeedRunner implements ApplicationRunner {
     private static final String CPF_B202_PRINCIPAL = "73264819546";
     private static final String CPF_A103_PRINCIPAL = "82159374628";
     private static final String CPF_B203_PRINCIPAL = "91038472504";
+
+    // FD-2 (ajuste): 8 unidades extras, só com histórico (sem reserva futura ativa), para o
+    // "top 10 unidades" do dashboard ter linhas suficientes (docs/08 §2).
+    private static final String CPF_A201_PRINCIPAL = "42975528507";
+    private static final String CPF_A202_PRINCIPAL = "35886825975";
+    private static final String CPF_A202_RESIDENT_2 = "62737040400";
+    private static final String CPF_A203_PRINCIPAL = "76329783217";
+    private static final String CPF_A204_PRINCIPAL = "23411470119";
+    private static final String CPF_B101_PRINCIPAL = "26372138760";
+    private static final String CPF_B102_PRINCIPAL = "61920145230";
+    private static final String CPF_B103_PRINCIPAL = "37421309438";
+    private static final String CPF_B103_RESIDENT_2 = "56285000700";
+    private static final String CPF_B104_PRINCIPAL = "90950733784";
 
     private final CondominiumLookup condominiums;
     private final AccountService accounts;
@@ -150,15 +171,38 @@ public class DemoSeedRunner implements ApplicationRunner {
                 + "Veja docs/08 §5.");
         }
 
+        ensureDefaultPaymentWhatsapp(adminId);
         Accounts accountIds = createAccounts(condominiumId, adminId);
         Scenario scenario = new Scenario(condominiumId, adminId, accountIds);
         Areas areaIds = createAreas(scenario);
         createFutureReservations(scenario, areaIds);
         createHistory(scenario, areaIds);
+        createSixMonthHistory(scenario, areaIds);
         createInspections(scenario, areaIds);
 
         log.info("Seed demo criado: 1 síndico, {} unidades, {} áreas (dados fictícios, D-33/D-59).",
             accountIds.units().size(), areaIds.all().size());
+    }
+
+    // ---- Configuracoes ------------------------------------------------------------------------
+
+    /**
+     * FD-2/D-43 (docs/12, "Reensaio" Bug 4): sem {@code APP_DEFAULT_PAYMENT_WHATSAPP}, o
+     * `BootstrapRunner` deixa {@code condominium.default_payment_whatsapp} nulo e a tela de
+     * Configurações trava (roteiro passo 11). No perfil demo, preenche com o mesmo número já
+     * usado nas áreas pagas ({@link #adminWhatsapp}); idempotente — não sobrescreve valor já
+     * definido (ex.: por `APP_DEFAULT_PAYMENT_WHATSAPP`).
+     */
+    private void ensureDefaultPaymentWhatsapp(UUID adminId) {
+        SettingsSnapshot current = settingsService.get();
+        if (StringUtils.hasText(current.defaultPaymentWhatsapp())) {
+            return;
+        }
+        UpdateSettingsCommand command = new UpdateSettingsCommand(current.condominiumName(), adminWhatsapp,
+            current.minAdvanceDays(), current.nextDayWindowStart(), current.nextDayWindowEnd(),
+            current.maxAdvanceDays(), current.maxActiveBookingsPerUnit(), current.residentCancelDeadlineHours(),
+            current.reportWindowDays());
+        settingsService.update(command, adminId);
     }
 
     // ---- Contas -----------------------------------------------------------------------------
@@ -198,7 +242,51 @@ public class DemoSeedRunner implements ApplicationRunner {
             new ResidentInput(null, "Diego Pereira Vieira", "5561999990009", "diego.vieira@exemplo.test",
                 CPF_B203_PRINCIPAL, true)), demoPassword, false);
 
-        return new Accounts(a101, a102, b201, b202, a103, b203);
+        List<UnitAccount> extraUnits = createExtraHistoryUnits(condominiumId, adminId);
+
+        return new Accounts(a101, a102, b201, b202, a103, b203, extraUnits);
+    }
+
+    // FD-2 (ajuste): unidades extras só com histórico (nunca aparecem em reservas futuras, blocos
+    // ou reports pré-montados), usadas apenas pelo sorteio de {@link #createSixMonthHistory}.
+    private List<UnitAccount> createExtraHistoryUnits(UUID condominiumId, UUID adminId) {
+        UnitAccount a201 = createUnit(condominiumId, adminId, "A", "201", List.of(
+            new ResidentInput(null, "Patrícia Almeida Rezende", "5561999990010", "patricia.rezende@exemplo.test",
+                CPF_A201_PRINCIPAL, true)), demoPassword, false);
+
+        UnitAccount a202 = createUnit(condominiumId, adminId, "A", "202", List.of(
+            new ResidentInput(null, "Thiago Barbosa Cunha", "5561999990011", "thiago.cunha@exemplo.test",
+                CPF_A202_PRINCIPAL, true),
+            new ResidentInput(null, "Renata Barbosa Cunha", "5561999990012", "renata.cunha@exemplo.test",
+                CPF_A202_RESIDENT_2, false)), demoPassword, false);
+
+        UnitAccount a203 = createUnit(condominiumId, adminId, "A", "203", List.of(
+            new ResidentInput(null, "Vinícius Moreira Santana", "5561999990013", "vinicius.santana@exemplo.test",
+                CPF_A203_PRINCIPAL, true)), demoPassword, false);
+
+        UnitAccount a204 = createUnit(condominiumId, adminId, "A", "204", List.of(
+            new ResidentInput(null, "Beatriz Carvalho Lima", "5561999990014", "beatriz.lima@exemplo.test",
+                CPF_A204_PRINCIPAL, true)), demoPassword, false);
+
+        UnitAccount b101 = createUnit(condominiumId, adminId, "B", "101", List.of(
+            new ResidentInput(null, "Eduardo Nascimento Farias", "5561999990015", "eduardo.farias@exemplo.test",
+                CPF_B101_PRINCIPAL, true)), demoPassword, false);
+
+        UnitAccount b102 = createUnit(condominiumId, adminId, "B", "102", List.of(
+            new ResidentInput(null, "Fernanda Azevedo Correia", "5561999990016", "fernanda.correia@exemplo.test",
+                CPF_B102_PRINCIPAL, true)), demoPassword, false);
+
+        UnitAccount b103 = createUnit(condominiumId, adminId, "B", "103", List.of(
+            new ResidentInput(null, "Gustavo Pinheiro Ramos", "5561999990017", "gustavo.ramos@exemplo.test",
+                CPF_B103_PRINCIPAL, true),
+            new ResidentInput(null, "Débora Pinheiro Ramos", "5561999990018", "debora.ramos@exemplo.test",
+                CPF_B103_RESIDENT_2, false)), demoPassword, false);
+
+        UnitAccount b104 = createUnit(condominiumId, adminId, "B", "104", List.of(
+            new ResidentInput(null, "Isabela Monteiro Braga", "5561999990019", "isabela.braga@exemplo.test",
+                CPF_B104_PRINCIPAL, true)), demoPassword, false);
+
+        return List.of(a201, a202, a203, a204, b101, b102, b103, b104);
     }
 
     private UnitAccount createUnit(UUID condominiumId, UUID adminId, String block, String number,
@@ -324,7 +412,7 @@ public class DemoSeedRunner implements ApplicationRunner {
         history.insertReport(condominiumId, reservationForOpenReport, areaIds.barbecue1(), a.a103().unitId(),
             a.a103().principalResidentId(), "Larissa Gomes Duarte", "MALFUNCTION",
             "A grelha da churrasqueira está com uma das travas quebrada e não fica presa durante o uso.", "OPEN",
-            null, null, startAt(today.minusDays(2), LocalTime.of(10, 0), zone));
+            null, null, null, startAt(today.minusDays(2), LocalTime.of(10, 0), zone));
 
         // b-203: reserva CONFIRMED da Churrasqueira 1 há 20 dias -> report RESOLVED com custo e comentário.
         UUID reservationForResolvedReport = history.insertConfirmedReservation(condominiumId, areaIds.barbecue1(),
@@ -335,7 +423,7 @@ public class DemoSeedRunner implements ApplicationRunner {
         Instant resolvedAt = startAt(today.minusDays(15), LocalTime.of(14, 0), zone);
         UUID resolvedReportId = history.insertReport(condominiumId, reservationForResolvedReport,
             areaIds.barbecue1(), a.b203().unitId(), a.b203().principalResidentId(), "Diego Pereira Vieira",
-            "DAMAGE", "Uma das bancadas de apoio estava rachada e precisou ser trocada.", "RESOLVED",
+            "DAMAGE", "Uma das bancadas de apoio estava rachada e precisou ser trocada.", "RESOLVED", null,
             new BigDecimal("120.00"), resolvedAt, startAt(today.minusDays(18), LocalTime.of(9, 0), zone));
         history.insertReportComment(resolvedReportId, adminId,
             "Bancada trocada pela manutenção; custo debitado do rateio extraordinário do mês.", true, resolvedAt);
@@ -343,6 +431,251 @@ public class DemoSeedRunner implements ApplicationRunner {
 
     private static Instant startAt(LocalDate date, LocalTime time, ZoneId zone) {
         return ZonedDateTime.of(date, time, zone).toInstant();
+    }
+
+    // ---- ~6 meses de historico para o dashboard (FD-2 completo, D-59/D-62) -------------------
+
+    // Semente fixa: mesmo Clock -> mesmo cenario sempre (docs/08 §2).
+    private static final long HISTORY_RANDOM_SEED = 20261110L;
+    // Mais peso a tarde/noite (RN-24 permite ate as 22:00); repetido = mais chance de sair sorteado.
+    private static final int[] HISTORY_HOURS = {9, 10, 11, 14, 14, 15, 15, 16, 16, 17, 17, 18, 18, 19, 19, 20};
+    private static final String[] HISTORY_CATEGORIES =
+        {"DAMAGE", "MALFUNCTION", "CLEANLINESS", "SAFETY", "MISSING_ITEM", "OTHER"};
+    private static final Map<String, String> HISTORY_REPORT_DESCRIPTIONS = Map.of(
+        "DAMAGE", "Uma das cadeiras plasticas estava rachada ao final do uso do espaco.",
+        "MALFUNCTION", "A torneira da pia de apoio nao fechava direito apos o uso.",
+        "CLEANLINESS", "O espaco estava com lixo acumulado do uso anterior, antes da limpeza.",
+        "SAFETY", "Uma tomada proxima a bancada estava com o fio parcialmente exposto.",
+        "MISSING_ITEM", "Faltava uma das taças do kit de utensilios do espaco.",
+        "OTHER", "Barulho de vazamento no encanamento durante o uso do espaco.");
+
+    private void createSixMonthHistory(Scenario scenario, Areas areaIds) {
+        RuleSettingsSnapshot rules = settingsService.current();
+        ZoneId zone = ZoneId.of(rules.timezone());
+        LocalDate today = LocalDate.now(clock);
+        UUID condominiumId = scenario.condominiumId();
+        Accounts accounts = scenario.accounts();
+
+        List<HistoryArea> pool = List.of(
+            new HistoryArea(areaIds.partyRoom(), true, new BigDecimal("150.00"), 3),
+            new HistoryArea(areaIds.barbecue1(), true, new BigDecimal("50.00"), 1),
+            new HistoryArea(areaIds.barbecue2(), false, null, 1),
+            new HistoryArea(areaIds.gourmet(), false, null, 1),
+            new HistoryArea(areaIds.sportsCourt(), false, null, 1));
+        // RN-16: a Piscina fica de fora do historico (ja nasce em manutencao, docs/08 §2).
+
+        // docs/08 §2: a-103/b-203 sao as unidades "com historico, usadas nos graficos" — as outras 4
+        // ja tem contagem exata fixada pelas situacoes pre-montadas (RN-22 em b-201, pendente em
+        // b-202, janela de report em a-101, senha temporaria em a-102) e nao podem ganhar reservas
+        // extras sem quebrar essas contagens.
+        List<UnitProfile> units = List.of(
+            new UnitProfile(accounts.a103(), "Larissa Gomes Duarte", "5561999990008"),
+            new UnitProfile(accounts.b203(), "Diego Pereira Vieira", "5561999990009"));
+
+        Map<UUID, List<Instant[]>> confirmedSlots = new HashMap<>();
+        registerSlot(confirmedSlots, areaIds.gourmet(), today.minusDays(1), LocalTime.of(19, 0), LocalTime.of(20, 0),
+            zone);
+        registerSlot(confirmedSlots, areaIds.sportsCourt(), today.minusDays(10), LocalTime.of(9, 0),
+            LocalTime.of(10, 0), zone);
+        registerSlot(confirmedSlots, areaIds.barbecue1(), today.minusDays(5), LocalTime.of(12, 0),
+            LocalTime.of(13, 0), zone);
+        registerSlot(confirmedSlots, areaIds.barbecue1(), today.minusDays(20), LocalTime.of(12, 0),
+            LocalTime.of(13, 0), zone);
+
+        Random random = new Random(HISTORY_RANDOM_SEED);
+        int reportCycle = 0;
+        int confirmedCount = 0;
+        for (LocalDate date = today.minusMonths(6); date.isBefore(today); date = date.plusDays(1)) {
+            boolean weekendish = isWeekendish(date.getDayOfWeek());
+            for (HistoryArea area : pool) {
+                double chance = weekendish ? 0.45 : 0.12;
+                if (random.nextDouble() >= chance) {
+                    continue;
+                }
+                UnitProfile unit = units.get(random.nextInt(units.size()));
+                int hour = pickHistoryHour(random, area.durationHours());
+                Instant startAt = startAt(date, LocalTime.of(hour, 0), zone);
+                Instant endAt = startAt.plus(area.durationHours(), ChronoUnit.HOURS);
+                String status = pickHistoryStatus(random);
+                Instant createdAt = startAt.minus(1 + random.nextInt(5), ChronoUnit.DAYS);
+                int guests = 2 + random.nextInt(area.durationHours() == 3 ? 20 : 6);
+
+                if (status.equals("CONFIRMED")) {
+                    if (overlaps(confirmedSlots, area.areaId(), startAt, endAt)) {
+                        continue;
+                    }
+                    confirmedSlots.computeIfAbsent(area.areaId(), key -> new ArrayList<>())
+                        .add(new Instant[] {startAt, endAt});
+                    UUID reservationId = history.insertConfirmedReservation(condominiumId, area.areaId(),
+                        unit.unitId(), unit.principalResidentId(), unit.residentName(), unit.residentPhone(),
+                        startAt, endAt, guests, area.requiresPayment(), area.price(), unit.accountId(), createdAt);
+                    confirmedCount++;
+                    // Report historico a cada ~9a reserva confirmada, alternando resolvido/descartado.
+                    if (confirmedCount % 9 == 0) {
+                        createHistoryReport(condominiumId, reservationId, area.areaId(), unit, reportCycle++,
+                            startAt);
+                    }
+                } else {
+                    Instant cancelledAt = createdAt.plus(1 + random.nextInt(2), ChronoUnit.DAYS);
+                    if (!cancelledAt.isBefore(startAt)) {
+                        cancelledAt = startAt.minus(1, ChronoUnit.HOURS);
+                    }
+                    history.insertReservation(condominiumId, area.areaId(), unit.unitId(),
+                        unit.principalResidentId(), unit.residentName(), unit.residentPhone(), startAt, endAt,
+                        guests, area.requiresPayment(), area.price(), "CANCELLED", status,
+                        historyCancellationReason(status), null, unit.accountId(), createdAt, cancelledAt);
+                }
+            }
+        }
+
+        // RF-SIN-01/F7: reserva ativa hoje apos as 10:00, gravada como historica (evita a janela RN-20).
+        UnitProfile todayUnit = units.get(0); // a-103
+        Instant todayStart = startAt(today, LocalTime.of(14, 0), zone);
+        Instant todayEnd = todayStart.plus(1, ChronoUnit.HOURS);
+        history.insertConfirmedReservation(condominiumId, areaIds.barbecue2(), todayUnit.unitId(),
+            todayUnit.principalResidentId(), todayUnit.residentName(), todayUnit.residentPhone(), todayStart,
+            todayEnd, 4, false, null, todayUnit.accountId(), todayStart.minus(4, ChronoUnit.DAYS));
+
+        createExtraUnitsGuaranteedHistory(scenario, areaIds, zone, today, confirmedSlots);
+    }
+
+    // FD-2 (ajuste): as 3 areas gratuitas usadas aqui bastam para nao mexer em requires_payment.
+    // Cada unidade "sorteia" seus proprios dias/horarios (mesmo vies de sex/sab/dom e mesmas
+    // HISTORY_HOURS do historico principal, semente fixa), checando overlap em memoria contra
+    // confirmedSlots (compartilhado com o sorteio de a-103/b-203) para nunca violar a exclusion
+    // constraint. Contagens escalonadas (10..31, sem empate) dao um ranking "top 10 unidades" mais
+    // equilibrado que o a-103/b-203 do sorteio principal (docs/08 §2).
+    private static final int[] EXTRA_UNIT_HISTORY_COUNTS = {10, 13, 16, 19, 22, 25, 28, 31};
+
+    private void createExtraUnitsGuaranteedHistory(Scenario scenario, Areas areaIds, ZoneId zone, LocalDate today,
+        Map<UUID, List<Instant[]>> confirmedSlots) {
+        UUID condominiumId = scenario.condominiumId();
+        Accounts accounts = scenario.accounts();
+        List<UnitProfile> extras = List.of(
+            new UnitProfile(accounts.extraUnits().get(0), "Patrícia Almeida Rezende", "5561999990010"),
+            new UnitProfile(accounts.extraUnits().get(1), "Thiago Barbosa Cunha", "5561999990011"),
+            new UnitProfile(accounts.extraUnits().get(2), "Vinícius Moreira Santana", "5561999990013"),
+            new UnitProfile(accounts.extraUnits().get(3), "Beatriz Carvalho Lima", "5561999990014"),
+            new UnitProfile(accounts.extraUnits().get(4), "Eduardo Nascimento Farias", "5561999990015"),
+            new UnitProfile(accounts.extraUnits().get(5), "Fernanda Azevedo Correia", "5561999990016"),
+            new UnitProfile(accounts.extraUnits().get(6), "Gustavo Pinheiro Ramos", "5561999990017"),
+            new UnitProfile(accounts.extraUnits().get(7), "Isabela Monteiro Braga", "5561999990019"));
+        UUID[] freeAreas = {areaIds.gourmet(), areaIds.sportsCourt(), areaIds.barbecue2()};
+
+        Random random = new Random(HISTORY_RANDOM_SEED + 1);
+        for (int i = 0; i < extras.size(); i++) {
+            UnitProfile unit = extras.get(i);
+            int remaining = EXTRA_UNIT_HISTORY_COUNTS[i];
+            LocalDate date = today.minusMonths(6);
+            while (remaining > 0 && date.isBefore(today)) {
+                double chance = isWeekendish(date.getDayOfWeek()) ? 0.35 : 0.10;
+                if (random.nextDouble() < chance) {
+                    UUID areaId = freeAreas[random.nextInt(freeAreas.length)];
+                    int hour = pickHistoryHour(random, 1);
+                    Instant startAt = startAt(date, LocalTime.of(hour, 0), zone);
+                    Instant endAt = startAt.plus(1, ChronoUnit.HOURS);
+                    if (!overlaps(confirmedSlots, areaId, startAt, endAt)) {
+                        confirmedSlots.computeIfAbsent(areaId, key -> new ArrayList<>())
+                            .add(new Instant[] {startAt, endAt});
+                        history.insertConfirmedReservation(condominiumId, areaId, unit.unitId(),
+                            unit.principalResidentId(), unit.residentName(), unit.residentPhone(), startAt, endAt, 4,
+                            false, null, unit.accountId(), startAt.minus(3, ChronoUnit.DAYS));
+                        remaining--;
+                    }
+                }
+                date = date.plusDays(1);
+            }
+        }
+    }
+
+    private void createHistoryReport(UUID condominiumId, UUID reservationId, UUID areaId, UnitProfile unit,
+        int cycle, Instant reservationStartAt) {
+        String category = HISTORY_CATEGORIES[cycle % HISTORY_CATEGORIES.length];
+        String description = HISTORY_REPORT_DESCRIPTIONS.get(category);
+        Instant createdAt = reservationStartAt.plus(1, ChronoUnit.DAYS);
+        boolean resolve = cycle % 2 == 0;
+        if (resolve) {
+            Instant resolvedAt = createdAt.plus(2 + cycle % 5, ChronoUnit.DAYS);
+            BigDecimal cost = BigDecimal.valueOf(30 + (cycle % 6) * 15);
+            history.insertReport(condominiumId, reservationId, areaId, unit.unitId(), unit.principalResidentId(),
+                unit.residentName(), category, description, "RESOLVED", null, cost, resolvedAt, createdAt);
+        } else {
+            history.insertReport(condominiumId, reservationId, areaId, unit.unitId(), unit.principalResidentId(),
+                unit.residentName(), category, description, "DISMISSED",
+                "Revisado pela sindicatura; sem evidencia de dano, uso normal do espaco.", null, null, createdAt);
+        }
+    }
+
+    private static void registerSlot(Map<UUID, List<Instant[]>> slots, UUID areaId, LocalDate date, LocalTime start,
+        LocalTime end, ZoneId zone) {
+        slots.computeIfAbsent(areaId, key -> new ArrayList<>())
+            .add(new Instant[] {startAt(date, start, zone), startAt(date, end, zone)});
+    }
+
+    private static boolean overlaps(Map<UUID, List<Instant[]>> slots, UUID areaId, Instant start, Instant end) {
+        List<Instant[]> existing = slots.get(areaId);
+        if (existing == null) {
+            return false;
+        }
+        for (Instant[] slot : existing) {
+            if (start.isBefore(slot[1]) && slot[0].isBefore(end)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isWeekendish(DayOfWeek dayOfWeek) {
+        return dayOfWeek == DayOfWeek.FRIDAY || dayOfWeek == DayOfWeek.SATURDAY || dayOfWeek == DayOfWeek.SUNDAY;
+    }
+
+    private static int pickHistoryHour(Random random, int durationHours) {
+        int maxStart = 22 - durationHours;
+        int hour;
+        do {
+            hour = HISTORY_HOURS[random.nextInt(HISTORY_HOURS.length)];
+        } while (hour > maxStart);
+        return hour;
+    }
+
+    /** `CONFIRMED` (maioria) ou o autor do cancelamento (`RESIDENT`/`ADMIN`/`SYSTEM`, minoria). */
+    private static String pickHistoryStatus(Random random) {
+        double r = random.nextDouble();
+        if (r < 0.78) {
+            return "CONFIRMED";
+        }
+        if (r < 0.90) {
+            return "RESIDENT";
+        }
+        if (r < 0.95) {
+            return "ADMIN";
+        }
+        return "SYSTEM";
+    }
+
+    private static String historyCancellationReason(String cancelledBy) {
+        return switch (cancelledBy) {
+            case "RESIDENT" -> "Cancelado pelo morador antes da data.";
+            case "ADMIN" -> "Cancelado pela administração; espaço necessário para outra atividade.";
+            default -> "Pagamento não confirmado dentro do prazo (RN-31).";
+        };
+    }
+
+    private record HistoryArea(UUID areaId, boolean requiresPayment, BigDecimal price, int durationHours) {
+    }
+
+    private record UnitProfile(UnitAccount unit, String residentName, String residentPhone) {
+        UUID unitId() {
+            return unit.unitId();
+        }
+
+        UUID accountId() {
+            return unit.accountId();
+        }
+
+        UUID principalResidentId() {
+            return unit.principalResidentId();
+        }
     }
 
     // ---- Vistorias ----------------------------------------------------------------------------
@@ -362,7 +695,7 @@ public class DemoSeedRunner implements ApplicationRunner {
     }
 
     private record Accounts(UnitAccount a101, UnitAccount a102, UnitAccount b201, UnitAccount b202,
-        UnitAccount a103, UnitAccount b203) {
+        UnitAccount a103, UnitAccount b203, List<UnitAccount> extraUnits) {
         List<UnitAccount> units() {
             return List.of(a101, a102, b201, b202, a103, b203);
         }

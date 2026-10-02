@@ -267,6 +267,18 @@ class ReportControllerTest extends AbstractIntegrationTest {
     }
 
     @Test
+    @DisplayName("RN-01/vibe-security: GET /reports/{id} de outra unidade -> 403 FORBIDDEN_RESOURCE")
+    void unitCannotViewAnotherUnitsReportByAdminRoute() throws Exception {
+        UUID reservationId = insertConfirmedReservation(TODAY, "08:00", "09:00");
+        UUID reportId = createReportAndGetId(unitToken, reservationId);
+
+        mockMvc.perform(get("/api/v1/reports/" + reportId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + otherUnitToken))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value("FORBIDDEN_RESOURCE"));
+    }
+
+    @Test
     @DisplayName("RN-36: OPEN pula direto para IN_MAINTENANCE (avanco permitido)")
     void statusCanSkipStagesForward() throws Exception {
         UUID reservationId = insertConfirmedReservation(TODAY, "08:00", "09:00");

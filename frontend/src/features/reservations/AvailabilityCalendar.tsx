@@ -90,20 +90,35 @@ export function AvailabilityCalendar({
             const closed = day ? !day.open : false;
             const bookable = !isPast && !!day?.open && day.bookable;
             const selected = selectedDate === date;
+            // Dia com motivo (RN-18/20/21): continua focável e ativável por
+            // teclado — o toque/Enter mostra o motivo (transparência da regra,
+            // D-49), então não pode carregar aria-disabled (leitor de tela
+            // trataria como não interativo). Passado/fechado não têm ação
+            // nenhuma ao ativar, então esses seguem aria-disabled de verdade.
+            const notBookableReason =
+              !isPast && day && day.open && !day.bookable
+                ? notBookableReasonText(day.notBookableReason, settings)
+                : null;
 
             return (
               <button
                 key={date}
                 type="button"
                 aria-pressed={selected}
-                aria-disabled={!bookable}
-                aria-label={closed ? `${dayNumber}, fechado` : String(dayNumber)}
+                aria-disabled={bookable || notBookableReason ? undefined : true}
+                aria-label={
+                  closed
+                    ? `${dayNumber}, fechado`
+                    : notBookableReason
+                      ? `${dayNumber}, não disponível: ${notBookableReason}`
+                      : String(dayNumber)
+                }
                 onClick={() => {
                   if (isPast) return;
                   if (bookable) {
                     setReasonDate(null);
                     onSelectDate(date);
-                  } else if (day && day.open && !day.bookable) {
+                  } else if (notBookableReason) {
                     setReasonDate(date);
                   }
                 }}

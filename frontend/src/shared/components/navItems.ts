@@ -12,8 +12,12 @@ const UNIT_ITEMS: NavItem[] = [
   { to: "/meus-reports", label: "Meus reports" },
 ];
 
+// F7-2: "Início" leva à página inicial (RF-SIN-01); bloqueios (RF-SIN-05) e o
+// comparador/fotos/vistorias de área (RF-SIN-04) não têm item próprio — já são
+// alcançados em um clique a partir de "Agenda" (botão "+ Novo bloqueio") e
+// "Áreas" (ação por área), reaproveitando essas telas em vez de duplicá-las.
 const MANAGEMENT_ITEMS: NavItem[] = [
-  { to: "/painel", label: "Painel" },
+  { to: "/painel", label: "Início" },
   { to: "/agenda", label: "Agenda" },
   { to: "/areas", label: "Áreas" },
   { to: "/reports", label: "Reports" },

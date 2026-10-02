@@ -22,8 +22,9 @@ import { ConfirmationsPage } from "../features/admin/payments/ConfirmationsPage"
 import { ReportFormPage } from "../features/reports/ReportFormPage";
 import { MyReportsPage } from "../features/reports/MyReportsPage";
 import { ReportsBoxPage } from "../features/reports/ReportsBoxPage";
+import { SyndicHomePage } from "../features/syndic/SyndicHomePage";
+import { DashboardPage } from "../features/dashboard/DashboardPage";
 import { NotFound } from "./NotFound";
-import { Placeholder } from "./Placeholder";
 import { RequireAuth } from "./RequireAuth";
 import { RequireRole } from "./RequireRole";
 import { homeForRole } from "./roleHome";
@@ -64,13 +65,10 @@ export function AppRoutes() {
             </Route>
 
             <Route element={<RequireRole roles={["SYNDIC", "ADMIN"]} />}>
-              <Route path="/painel" element={<Placeholder title="Painel" />} />
+              <Route path="/painel" element={<SyndicHomePage />} />
               <Route path="/agenda" element={<AgendaPage />} />
               <Route path="/reports" element={<ReportsBoxPage />} />
-              <Route
-                path="/dashboard"
-                element={<Placeholder title="Dashboard" />}
-              />
+              <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/areas/:id/editar" element={<EditAreaPage />} />
               <Route path="/areas/:id/fotos" element={<AreaPhotosPage />} />
               <Route path="/areas/:id/vistorias" element={<AreaInspectionsPage />} />

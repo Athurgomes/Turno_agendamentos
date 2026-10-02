@@ -8,9 +8,11 @@ import br.com.reservas.shared.audit.AuditService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,5 +57,19 @@ public class AreaInspectionService {
         return photos.listHistory(areaId, null, null, true).stream()
             .filter(p -> inspectionId.equals(p.getInspectionId()))
             .toList();
+    }
+
+    /**
+     * `GET /dashboard/home` (F7-1, RF-SIN-01): data da última vistoria de cada
+     * área (ausente na lista = nunca vistoriada), em uma única consulta.
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, LocalDate> lastInspectionByAreaIds(Collection<UUID> areaIds) {
+        if (areaIds.isEmpty()) {
+            return Map.of();
+        }
+        return inspections.findLastInspectedAtByAreaIdIn(areaIds).stream()
+            .collect(Collectors.toMap(AreaInspectionRepository.LastInspectionProjection::getAreaId,
+                AreaInspectionRepository.LastInspectionProjection::getLastInspectedAt));
     }
 }

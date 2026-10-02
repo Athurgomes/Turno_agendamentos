@@ -1,0 +1,12 @@
+{
+  "name": "roteiro-demo-e2e",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Ensaio Playwright do roteiro de demonstração (docs/08 §4) — FD-5/F9-3. Não é publicado nem faz parte do build de produção.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.48.0"
+  }
+}

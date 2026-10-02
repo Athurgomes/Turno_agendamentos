@@ -17,6 +17,7 @@ import { useSession } from "./useSession";
 import { homeForRole } from "../../routes/roleHome";
 import { login as loginRequest } from "./api";
 import { ApiError } from "../../shared/api/client";
+import { BrandMark } from "../../shared/components/BrandMark";
 
 const schema = z.object({
   login: z.string().trim().min(1, "Informe seu usuário ou e-mail."),
@@ -95,14 +96,9 @@ export function LoginPage() {
     <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-neutral-50 px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center gap-1 text-center">
-          <span
-            aria-hidden="true"
-            className="flex h-11 w-11 items-center justify-center rounded-md bg-primary-600 text-lg font-semibold text-white"
-          >
-            R
-          </span>
+          <BrandMark className="h-11 w-11" />
           <h1 className="mt-2 text-xl font-semibold text-neutral-900">
-            Entrar no sistema
+            Turno
           </h1>
           <p className="text-sm text-neutral-600">
             Reservas de áreas comuns do condomínio

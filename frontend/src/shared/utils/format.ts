@@ -55,6 +55,24 @@ export function formatCurrency(value: number): string {
   return currencyFormatter.format(value);
 }
 
+const percentFormatter = new Intl.NumberFormat("pt-BR", {
+  style: "percent",
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+
+/** Fração 0–1 (ex. `occupancyRate`, `residentRate`) → `12,3%`. */
+export function formatPercent(value: number): string {
+  return percentFormatter.format(value);
+}
+
+const hoursFormatter = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
+
+/** Número de horas (ex. `reservedHours`, `averageResolutionHours`) → `3,5 h`. */
+export function formatHours(value: number): string {
+  return `${hoursFormatter.format(value)} h`;
+}
+
 /** Telefone só dígitos com DDI (`5562999998888`) → `+55 (62) 99999-8888`. */
 export function formatPhone(digitsWithDdi: string): string {
   const digits = digitsWithDdi.replace(/\D/g, "");

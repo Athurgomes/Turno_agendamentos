@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { apiFetch, ApiError } from "./client";
+import { apiFetch, apiFetchBlob, ApiError } from "./client";
 import {
   clearSession,
   getSession,
@@ -207,5 +207,77 @@ describe("apiFetch", () => {
     const [, init] = fetchMock.mock.calls[0];
     expect((init?.headers as Headers).has("Content-Type")).toBe(false);
     expect(init?.body).toBe(form);
+  });
+});
+
+describe("apiFetchBlob", () => {
+  beforeEach(() => {
+    clearSession();
+    setRedirectToLogin(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("em 401, faz refresh uma vez e repete a requisição original antes de ler o blob", async () => {
+    let call = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      call += 1;
+      const url = String(input);
+      if (url === "/api/v1/dashboard/export" && call === 1) {
+        return jsonResponse(401, {
+          status: 401,
+          code: "UNAUTHENTICATED",
+          detail: "Sessão expirada.",
+        });
+      }
+      if (url === "/api/v1/auth/refresh") {
+        return jsonResponse(200, {
+          accessToken: "novo-token",
+          expiresIn: 900,
+          user: {
+            id: "1",
+            role: "ADMIN",
+            name: "Admin",
+            unitId: null,
+            unitIdentifier: null,
+            tempPassword: false,
+          },
+        });
+      }
+      return new Response("csv,data", {
+        status: 200,
+        headers: { "Content-Disposition": 'attachment; filename="reservas.csv"' },
+      });
+    });
+
+    const result = await apiFetchBlob(
+      "/dashboard/export",
+      "fallback.csv",
+    );
+
+    expect(result.filename).toBe("reservas.csv");
+    expect(getSession().accessToken).toBe("novo-token");
+    expect(await result.blob.text()).toBe("csv,data");
+  });
+
+  it("refresh falho na exportação propaga ApiError e redireciona para /login", async () => {
+    const redirect = vi.fn();
+    setRedirectToLogin(redirect);
+
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
+      jsonResponse(401, {
+        status: 401,
+        code: "UNAUTHENTICATED",
+        detail: "Sessão expirada.",
+      }),
+    );
+
+    await expect(
+      apiFetchBlob("/dashboard/export", "fallback.csv"),
+    ).rejects.toBeInstanceOf(ApiError);
+    expect(getSession().accessToken).toBeNull();
+    expect(redirect).toHaveBeenCalledTimes(1);
   });
 });

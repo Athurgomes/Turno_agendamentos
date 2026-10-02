@@ -63,6 +63,10 @@ public interface ReservationRepository extends JpaRepository<Reservation, UUID>,
     // GET /payments/pending (ADMIN, RF-PAG-02): só reserva de morador, nunca bloqueio.
     List<Reservation> findByStatusAndKindOrderByStartAtAsc(ReservationStatus status, ReservationKind kind);
 
+    // GET /dashboard/home (F7-1, RF-SIN-01): reservas/bloqueios ativos com inicio em [from, to).
+    List<Reservation> findByStatusInAndStartAtGreaterThanEqualAndStartAtLessThanOrderByStartAtAsc(
+        List<ReservationStatus> statuses, Instant from, Instant to);
+
     /**
      * RN-31: expira em lote, num único `UPDATE ... RETURNING id`, toda pendente
      * (`PENDING_PAYMENT`) cujo início já passou. Sem `@Modifying`: é assim que o

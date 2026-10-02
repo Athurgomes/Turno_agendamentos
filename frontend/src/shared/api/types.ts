@@ -157,6 +157,114 @@ export interface ReservationSummary {
   status: ReservationStatus;
 }
 
+/** Item de `openReports.items` em `GET /dashboard/home` (F7-1, RF-SIN-01). */
+export interface OpenReportItemDto {
+  id: string;
+  code: string;
+  areaName: string;
+  unitIdentifier: string;
+  category: ReportCategory;
+  status: ReportStatus;
+  createdAt: string;
+}
+
+/** Item de `overdueInspections` em `GET /dashboard/home` (F7-1, RF-SIN-01). */
+export interface OverdueInspectionDto {
+  areaId: string;
+  areaName: string;
+  status: AreaStatus;
+  lastInspectionAt: string | null;
+  daysSinceInspection: number | null;
+}
+
+/**
+ * `GET /dashboard/home` (F7-1, RF-SIN-01): página inicial do síndico/administração —
+ * reservas/bloqueios de hoje e dos próximos 7 dias, reports abertos e vistorias atrasadas.
+ */
+export interface DashboardHomeDto {
+  today: ReservationSummary[];
+  next7Days: ReservationSummary[];
+  openReports: { count: number; items: OpenReportItemDto[] };
+  overdueInspections: OverdueInspectionDto[];
+}
+
+/**
+ * `GET /dashboard/summary` (RF-DAS-01/02, F8-3): cards de indicador do
+ * período. Só formatação no front — nenhum cálculo (CLAUDE.md §5 regra 3).
+ */
+export interface DashboardSummaryDto {
+  from: string;
+  to: string;
+  activeUnits: number;
+  activeResidents: number;
+  reservations: {
+    total: number;
+    pendingPayment: number;
+    confirmed: number;
+    cancelled: number;
+  };
+  cancellations: {
+    byResident: number;
+    byAdmin: number;
+    bySystem: number;
+    residentRate: number;
+    adminRate: number;
+  };
+  amounts: { confirmed: number; pending: number };
+  reports: {
+    opened: number;
+    resolved: number;
+    open: number;
+    averageResolutionHours: number | null;
+    byCategory: { category: ReportCategory; count: number }[];
+  };
+  maintenanceCost: number;
+}
+
+/** Item de `GET /dashboard/reservations-by-month` (RF-DAS-02): série de 12 meses. */
+export interface MonthlyReservationsDto {
+  month: string;
+  total: number;
+  confirmed: number;
+  pendingPayment: number;
+  cancelled: number;
+}
+
+/** Item de `GET /dashboard/areas` (RF-DAS-02): reservas, ocupação, reports e custo por área. */
+export interface AreaMetricDto {
+  areaId: string;
+  areaName: string;
+  category: AreaCategory;
+  status: AreaStatus;
+  reservations: number;
+  reservedHours: number;
+  availableHours: number;
+  occupancyRate: number;
+  reports: number;
+  maintenanceCost: number;
+}
+
+/** Célula de `GET /dashboard/demand-heatmap` (RF-DAS-02): 1 = segunda … 7 = domingo. */
+export interface HeatmapCellDto {
+  dayOfWeek: IsoWeekday;
+  hour: number;
+  count: number;
+}
+
+/** Item de `GET /dashboard/top-units` (RF-DAS-02): até 10, ordenado por reservas desc. */
+export interface TopUnitDto {
+  unitId: string;
+  unitIdentifier: string;
+  reservations: number;
+  reservedHours: number;
+}
+
+/** `type` de `GET /exports/{type}` (docs/03-api.md "Dashboard e exportação"). */
+export type ExportType = "reservations" | "areas" | "reports" | "payments" | "units";
+
+/** `format` de `GET /exports/{type}`. */
+export type ExportFormat = "csv" | "xlsx";
+
 /** Conta de síndico (`docs/03-api.md` "Contas de síndico e configurações", RF-UNI-07). */
 export interface SyndicDto {
   id: string;
@@ -185,7 +293,8 @@ export interface MyUnitDto {
 export interface SettingsDto {
   condominiumName: string;
   timezone: string;
-  defaultPaymentWhatsapp: string;
+  /** Opcional no backend (`UpdateSettingsRequest` sem `@NotBlank`); `null` quando `APP_DEFAULT_PAYMENT_WHATSAPP` não foi definida no bootstrap. */
+  defaultPaymentWhatsapp: string | null;
   minAdvanceDays: number;
   nextDayWindowStart: string;
   nextDayWindowEnd: string;

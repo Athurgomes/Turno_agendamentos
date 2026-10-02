@@ -81,7 +81,7 @@ export function CreateAreaPage() {
         categories={categories ?? []}
         defaultValues={emptyFormValues()}
         showPhotos
-        defaultPaymentWhatsapp={settings?.defaultPaymentWhatsapp}
+        defaultPaymentWhatsapp={settings?.defaultPaymentWhatsapp ?? undefined}
         submitLabel="Cadastrar área"
         submittingLabel="Cadastrando…"
         onSubmit={handleSubmit}

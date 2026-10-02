@@ -44,6 +44,15 @@ export function useCancelPendingPayment() {
  * Visibilidade do item de menu "Confirmações" (RF-PAG-01): aparece para ADMIN
  * quando o catálogo tem alguma área `requiresPayment` ou já existe pendência.
  * Desabilitada para os demais perfis (nada de negócio exposto a S/U).
+ *
+ * Bug 3 (docs/12-ensaio-roteiro.md): o AppShell inteiro remonta a cada
+ * login/logout, e sem `staleTime` essa query de catálogo (que raramente
+ * muda — já é invalidada explicitamente por `useCreateArea`/`useUpdateArea`/
+ * `useUpdateAreaStatus`/`useDeleteArea`) refazia a chamada de rede a cada
+ * remontagem, competindo por conexão com as ~5 chamadas concorrentes de
+ * `/painel` logo após o login. `staleTime` evita a refetch redundante
+ * enquanto o cache continuar válido; o contador de pendências (que precisa
+ * ficar sempre atual) continua sem cache.
  */
 export function useConfirmationsNavInfo() {
   const { user } = useSession();
@@ -53,6 +62,7 @@ export function useConfirmationsNavInfo() {
     queryKey: ["areas", {}] as const,
     queryFn: () => listAreas({}),
     enabled: isAdmin,
+    staleTime: 5 * 60 * 1000,
   });
 
   const { data: pending } = useQuery({
